@@ -259,6 +259,7 @@ def zeige_spielplan(spielplan, ergebnisse):
 # ─────────────────────────────────────────────
 # Ergebnis eintragen
 # ─────────────────────────────────────────────
+
 def trage_ergebnis_ein(spielplan, ergebnisse):
     st.header("✏️ Ergebnis eintragen")
 
@@ -280,7 +281,7 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         st.warning("Keine Spiele für diesen Spieltag gefunden.")
         return
 
-    auswahl = st.selectbox("Spiel wählen", optionen, key=f"spiel_auswahl_{spieltag}")
+    auswahl = st.selectbox("Spiel wählen", optionen, key="spiel_auswahl")
 
     try:
         idx = optionen.index(auswahl)
@@ -292,6 +293,15 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
     spiel = spiele_heute[idx]
     key   = (spiel["spieltag"], spiel["heim"], spiel["gast"])
 
+    # Prüfen ob sich das Spiel geändert hat → Felder zurücksetzen
+    letztes_spiel = st.session_state.get("letztes_spiel")
+    if letztes_spiel != key:
+        st.session_state["letztes_spiel"] = key
+        # Formularfelder zurücksetzen
+        for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg"]:
+            if k in st.session_state:
+                del st.session_state[k]
+
     vorhandene = None
     for e in ergebnisse:
         if (e["spieltag"], e["heim"], e["gast"]) == key:
@@ -301,6 +311,15 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
     if vorhandene:
         st.info("ℹ️ Dieses Spiel wurde bereits eingetragen. Du kannst es überschreiben.")
 
+    # Standardwerte: vorhandene Daten ODER leer (0 / 0.0 / "")
+    def iv(field, fallback):
+        """Wert aus session_state, sonst aus vorhandene, sonst fallback"""
+        if field in st.session_state:
+            return st.session_state[field]
+        if vorhandene:
+            return vorhandene.get(field, fallback)
+        return fallback
+
     st.markdown(f"### {spiel['heim']} vs {spiel['gast']}")
 
     with st.form("ergebnis_form"):
@@ -309,14 +328,13 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         with col1:
             st.markdown(f"**{spiel['heim']}**")
             legs_heim     = st.number_input("Legs", min_value=0, max_value=10,
-                                            value=vorhandene["legs_heim"] if vorhandene else 0, key="lh")
+                                            value=iv("legs_heim", 0), key="lh")
             avg_heim      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=float(vorhandene["avg_heim"]) if vorhandene else 0.0, key="ah")
+                                            value=float(iv("avg_heim", 0.0)), key="ah")
             checkout_heim = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=float(vorhandene["checkout_heim"]) if vorhandene else 0.0, key="ch")
+                                            value=float(iv("checkout_heim", 0.0)), key="ch")
             er_26_heim    = st.number_input("26er", min_value=0,
-                                            value=vorhandene["er_26_heim"] if vorhandene else 0, key="z6h")
-            # High-Checks als kommagetrennte Zahlen eingeben
+                                            value=iv("er_26_heim", 0), key="z6h")
             hc_heim_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_heim") or [])) if vorhandene else ""
             hc_heim_str     = st.text_input(
                 "High-Checks (>100), kommagetrennt z.B. 102, 115",
@@ -326,13 +344,13 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         with col2:
             st.markdown(f"**{spiel['gast']}**")
             legs_gast     = st.number_input("Legs", min_value=0, max_value=10,
-                                            value=vorhandene["legs_gast"] if vorhandene else 0, key="lg")
+                                            value=iv("legs_gast", 0), key="lg")
             avg_gast      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=float(vorhandene["avg_gast"]) if vorhandene else 0.0, key="ag")
+                                            value=float(iv("avg_gast", 0.0)), key="ag")
             checkout_gast = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=float(vorhandene["checkout_gast"]) if vorhandene else 0.0, key="cg")
+                                            value=float(iv("checkout_gast", 0.0)), key="cg")
             er_26_gast    = st.number_input("26er", min_value=0,
-                                            value=vorhandene["er_26_gast"] if vorhandene else 0, key="z6g")
+                                            value=iv("er_26_gast", 0), key="z6g")
             hc_gast_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_gast") or [])) if vorhandene else ""
             hc_gast_str     = st.text_input(
                 "High-Checks (>100), kommagetrennt z.B. 102, 115",
@@ -342,7 +360,6 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         submit = st.form_submit_button("💾 Speichern", use_container_width=True)
 
     if submit:
-        # High-Checks parsen
         def parse_hc(s):
             result = []
             for x in s.split(","):
@@ -375,8 +392,8 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
                 supabase.table("ergebnisse").insert(daten).execute()
                 st.success("✅ Ergebnis gespeichert!")
 
-            # Cache der Formularfelder leeren
-            for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg"]:
+            # Felder + Spiel-Tracker zurücksetzen
+            for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg", "letztes_spiel"]:
                 if k in st.session_state:
                     del st.session_state[k]
 
