@@ -3,6 +3,15 @@ import pandas as pd
 from supabase import create_client
 
 # ─────────────────────────────────────────────
+# Light Mode erzwingen
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="Dart Turnier 2026",
+    page_icon="🎯",
+    layout="wide"
+)
+
+# ─────────────────────────────────────────────
 # Verbindung zu Supabase
 # ─────────────────────────────────────────────
 @st.cache_resource
@@ -27,12 +36,8 @@ def check_passwort():
     with col2:
         st.markdown("### 🔒 Login")
         with st.form("login_form"):
-            passwort = st.text_input(
-                "Passwort",
-                type="password",
-                placeholder="Passwort eingeben..."
-            )
-            submit = st.form_submit_button("🔓 Einloggen", use_container_width=True)
+            passwort = st.text_input("Passwort", type="password", placeholder="Passwort eingeben...")
+            submit   = st.form_submit_button("🔓 Einloggen", use_container_width=True)
 
         if submit:
             if passwort == st.secrets["APP_PASSWORT"]:
@@ -60,10 +65,12 @@ def lade_ergebnisse():
 def zeige_tabelle(ergebnisse):
     st.header("🏆 Tabelle")
 
-    spieler = ["Claas", "Pätte", "Jakob", "Felix", "Jonas", "Chrissi", "Flo", "Dwain"]
+    spieler_liste = ["Claas", "Pätte", "Jakob", "Felix", "Jonas", "Chrissi", "Flo", "Dwain"]
     stats = {s: {"Punkte": 0, "Siege": 0, "Niederlagen": 0, "Unentschieden": 0,
-                 "Legs+": 0, "Legs-": 0, "Spiele": 0, "Avg_sum": 0.0, "Avg_n": 0}
-             for s in spieler}
+                 "Legs+": 0, "Legs-": 0, "Spiele": 0,
+                 "Avg_sum": 0.0, "Avg_n": 0,
+                 "26er": 0, "Highchecks": [], "Best_HC": 0}
+             for s in spieler_liste}
 
     for e in ergebnisse:
         h, g = e["heim"], e["gast"]
@@ -73,10 +80,20 @@ def zeige_tabelle(ergebnisse):
 
         stats[h]["Spiele"] += 1
         stats[g]["Spiele"] += 1
-        stats[h]["Legs+"] += lh
-        stats[h]["Legs-"] += lg
-        stats[g]["Legs+"] += lg
-        stats[g]["Legs-"] += lh
+        stats[h]["Legs+"]  += lh
+        stats[h]["Legs-"]  += lg
+        stats[g]["Legs+"]  += lg
+        stats[g]["Legs-"]  += lh
+        stats[h]["26er"]   += e.get("er_26_heim", 0)
+        stats[g]["26er"]   += e.get("er_26_gast", 0)
+
+        # High-Checks (Liste von Zahlen)
+        for hc in (e.get("highcheck_heim") or []):
+            if isinstance(hc, (int, float)) and hc > 0:
+                stats[h]["Highchecks"].append(hc)
+        for hc in (e.get("highcheck_gast") or []):
+            if isinstance(hc, (int, float)) and hc > 0:
+                stats[g]["Highchecks"].append(hc)
 
         if e["avg_heim"] > 0:
             stats[h]["Avg_sum"] += e["avg_heim"]
@@ -86,35 +103,34 @@ def zeige_tabelle(ergebnisse):
             stats[g]["Avg_n"]   += 1
 
         if lh > lg:
-            stats[h]["Punkte"] += 2
-            stats[h]["Siege"]  += 1
+            stats[h]["Punkte"] += 2; stats[h]["Siege"] += 1
             stats[g]["Niederlagen"] += 1
         elif lg > lh:
-            stats[g]["Punkte"] += 2
-            stats[g]["Siege"]  += 1
+            stats[g]["Punkte"] += 2; stats[g]["Siege"] += 1
             stats[h]["Niederlagen"] += 1
         else:
-            stats[h]["Punkte"] += 1
-            stats[g]["Punkte"] += 1
-            stats[h]["Unentschieden"] += 1
-            stats[g]["Unentschieden"] += 1
+            stats[h]["Punkte"] += 1; stats[g]["Punkte"] += 1
+            stats[h]["Unentschieden"] += 1; stats[g]["Unentschieden"] += 1
 
     rows = []
     for s, v in stats.items():
-        avg = round(v["Avg_sum"] / v["Avg_n"], 2) if v["Avg_n"] > 0 else 0
+        avg     = round(v["Avg_sum"] / v["Avg_n"], 2) if v["Avg_n"] > 0 else 0.0
+        best_hc = max(v["Highchecks"]) if v["Highchecks"] else "-"
         rows.append({
-            "Spieler":   s,
-            "Spiele":    v["Spiele"],
-            "S":         v["Siege"],
-            "U":         v["Unentschieden"],
-            "N":         v["Niederlagen"],
-            "Legs +/-":  f"{v['Legs+']}:{v['Legs-']}",
-            "Punkte":    v["Punkte"],
-            "Ø Average": avg
+            "Spieler":       s,
+            "Spiele":        v["Spiele"],
+            "S":             v["Siege"],
+            "U":             v["Unentschieden"],
+            "N":             v["Niederlagen"],
+            "Legs +/-":      f"{v['Legs+']}:{v['Legs-']}",
+            "Punkte":        v["Punkte"],
+            "Ø Avg":         avg,
+            "26er":          v["26er"],
+            "Best HC":       best_hc,
         })
 
     df = pd.DataFrame(rows).sort_values(
-        ["Punkte", "S", "Ø Average"], ascending=False
+        ["Punkte", "S", "Ø Avg"], ascending=False
     ).reset_index(drop=True)
     df.index += 1
 
@@ -128,9 +144,49 @@ def zeige_tabelle(ergebnisse):
         return [""] * len(row)
 
     st.dataframe(
-        df.style.apply(style_tabelle, axis=1),
+        df.style.apply(style_tabelle, axis=1).format({"Ø Avg": "{:.2f}"}),
         use_container_width=True
     )
+
+    # ── Preise & Awards ──────────────────────────────────
+    st.markdown("---")
+    st.subheader("🏅 Preise & Awards")
+
+    # Werte berechnen
+    sorted_rows = sorted(rows, key=lambda x: (x["Punkte"], x["S"], x["Ø Avg"]), reverse=True)
+
+    platz1 = sorted_rows[0]["Spieler"] if len(sorted_rows) > 0 else "–"
+    platz2 = sorted_rows[1]["Spieler"] if len(sorted_rows) > 1 else "–"
+    platz3 = sorted_rows[2]["Spieler"] if len(sorted_rows) > 2 else "–"
+
+    krone_26  = max(rows, key=lambda x: x["26er"])
+    best_avg  = max(rows, key=lambda x: x["Ø Avg"])
+
+    # Bestes High-Check über alle
+    best_hc_val  = 0
+    best_hc_name = "–"
+    for e in ergebnisse:
+        for hc in (e.get("highcheck_heim") or []):
+            if isinstance(hc, (int, float)) and hc > best_hc_val:
+                best_hc_val  = hc
+                best_hc_name = e["heim"]
+        for hc in (e.get("highcheck_gast") or []):
+            if isinstance(hc, (int, float)) and hc > best_hc_val:
+                best_hc_val  = hc
+                best_hc_name = e["gast"]
+
+    hc_label = f"{best_hc_name} ({best_hc_val})" if best_hc_val > 0 else "Noch offen"
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"🏆 **Platz 1 – 15 €**\n\n{platz1}")
+        st.markdown(f"🥈 **Platz 2 – 8 €**\n\n{platz2}")
+        st.markdown(f"🥉 **Platz 3 – 4 €**\n\n{platz3}")
+    with col2:
+        st.markdown(f"👑 **26er-Krone – 5 €**\n\n{krone_26['Spieler']} ({krone_26['26er']} Stück)")
+        st.markdown(f"📊 **Best Average – 4 €**\n\n{best_avg['Spieler']} ({best_avg['Ø Avg']:.2f})")
+    with col3:
+        st.markdown(f"🚀 **High-Finish-Award – 4 €**\n\n{hc_label}")
 
 # ─────────────────────────────────────────────
 # Spielplan anzeigen
@@ -174,10 +230,16 @@ def zeige_spielplan(spielplan, ergebnisse):
                     st.markdown(f"**{spiel['gast']}**")
 
                 if e:
+                    hc_h = e.get("highcheck_heim") or []
+                    hc_g = e.get("highcheck_gast") or []
+                    hc_str = ""
+                    if hc_h or hc_g:
+                        hc_str = f" – HC: {hc_h} | {hc_g}"
                     st.caption(
-                        f"Avg: {e['avg_heim']} | {e['avg_gast']} – "
+                        f"Avg: {e['avg_heim']:.2f} | {e['avg_gast']:.2f} – "
                         f"Checkout: {e['checkout_heim']}% | {e['checkout_gast']}% – "
                         f"26er: {e['er_26_heim']} | {e['er_26_gast']}"
+                        f"{hc_str}"
                     )
                 st.markdown("---")
 
@@ -193,8 +255,7 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
 
     spieltage = sorted(set(s["spieltag"] for s in spielplan))
     spieltag  = st.selectbox(
-        "Spieltag wählen",
-        spieltage,
+        "Spieltag wählen", spieltage,
         format_func=lambda x: f"Spieltag {x}",
         key="spieltag_auswahl"
     )
@@ -206,13 +267,8 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         st.warning("Keine Spiele für diesen Spieltag gefunden.")
         return
 
-    auswahl = st.selectbox(
-        "Spiel wählen",
-        optionen,
-        key=f"spiel_auswahl_{spieltag}"
-    )
+    auswahl = st.selectbox("Spiel wählen", optionen, key=f"spiel_auswahl_{spieltag}")
 
-    # Sicherheitsnetz – fängt den Fehler ab statt zu crashen
     try:
         idx = optionen.index(auswahl)
     except ValueError:
@@ -247,8 +303,12 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
                                             value=float(vorhandene["checkout_heim"]) if vorhandene else 0.0, key="ch")
             er_26_heim    = st.number_input("26er", min_value=0,
                                             value=vorhandene["er_26_heim"] if vorhandene else 0, key="z6h")
-            hc_heim       = st.checkbox("High-Check (>100)",
-                                        value=bool(vorhandene["highcheck_heim"]) if vorhandene else False, key="hch")
+            # High-Checks als kommagetrennte Zahlen eingeben
+            hc_heim_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_heim") or [])) if vorhandene else ""
+            hc_heim_str     = st.text_input(
+                "High-Checks (>100), kommagetrennt z.B. 102, 115",
+                value=hc_heim_default, key="hch"
+            )
 
         with col2:
             st.markdown(f"**{spiel['gast']}**")
@@ -260,12 +320,24 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
                                             value=float(vorhandene["checkout_gast"]) if vorhandene else 0.0, key="cg")
             er_26_gast    = st.number_input("26er", min_value=0,
                                             value=vorhandene["er_26_gast"] if vorhandene else 0, key="z6g")
-            hc_gast       = st.checkbox("High-Check (>100)",
-                                        value=bool(vorhandene["highcheck_gast"]) if vorhandene else False, key="hcg")
+            hc_gast_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_gast") or [])) if vorhandene else ""
+            hc_gast_str     = st.text_input(
+                "High-Checks (>100), kommagetrennt z.B. 102, 115",
+                value=hc_gast_default, key="hcg"
+            )
 
         submit = st.form_submit_button("💾 Speichern", use_container_width=True)
 
     if submit:
+        # High-Checks parsen
+        def parse_hc(s):
+            result = []
+            for x in s.split(","):
+                x = x.strip()
+                if x.isdigit():
+                    result.append(int(x))
+            return result
+
         daten = {
             "spieltag":       spiel["spieltag"],
             "heim":           spiel["heim"],
@@ -278,18 +350,20 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
             "checkout_gast":  float(checkout_gast),
             "er_26_heim":     int(er_26_heim),
             "er_26_gast":     int(er_26_gast),
-            "highcheck_heim": hc_heim,
-            "highcheck_gast": hc_gast
+            "highcheck_heim": parse_hc(hc_heim_str),
+            "highcheck_gast": parse_hc(hc_gast_str),
         }
 
-        if vorhandene:
-            supabase.table("ergebnisse").update(daten).eq("id", vorhandene["id"]).execute()
-            st.success("✅ Ergebnis aktualisiert!")
-        else:
-            supabase.table("ergebnisse").insert(daten).execute()
-            st.success("✅ Ergebnis gespeichert!")
-
-        st.rerun()
+        try:
+            if vorhandene:
+                supabase.table("ergebnisse").update(daten).eq("id", vorhandene["id"]).execute()
+                st.success("✅ Ergebnis aktualisiert!")
+            else:
+                supabase.table("ergebnisse").insert(daten).execute()
+                st.success("✅ Ergebnis gespeichert!")
+            st.rerun()
+        except Exception as ex:
+            st.error(f"❌ Fehler beim Speichern: {ex}")
 
 # ─────────────────────────────────────────────
 # Statistiken
@@ -307,6 +381,7 @@ def zeige_statistiken(ergebnisse):
     legs_p    = 0
     legs_m    = 0
     gesamt_26 = 0
+    alle_hc   = []
 
     for e in ergebnisse:
         if e["heim"] == spieler:
@@ -316,48 +391,48 @@ def zeige_statistiken(ergebnisse):
         else:
             continue
 
-        l_p    = e["legs_heim"] if ist_heim else e["legs_gast"]
-        l_m    = e["legs_gast"] if ist_heim else e["legs_heim"]
-        avg    = e["avg_heim"]  if ist_heim else e["avg_gast"]
-        co     = e["checkout_heim"] if ist_heim else e["checkout_gast"]
-        z26    = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
-        hc     = e["highcheck_heim"] if ist_heim else e["highcheck_gast"]
-        gegner = e["gast"] if ist_heim else e["heim"]
+        l_p  = e["legs_heim"] if ist_heim else e["legs_gast"]
+        l_m  = e["legs_gast"] if ist_heim else e["legs_heim"]
+        avg  = e["avg_heim"]  if ist_heim else e["avg_gast"]
+        co   = e["checkout_heim"] if ist_heim else e["checkout_gast"]
+        z26  = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
+        hc_liste = (e.get("highcheck_heim") or []) if ist_heim else (e.get("highcheck_gast") or [])
+        gegner   = e["gast"] if ist_heim else e["heim"]
 
         legs_p    += l_p
         legs_m    += l_m
         gesamt_26 += z26
+        alle_hc   += [x for x in hc_liste if isinstance(x, (int, float)) and x > 0]
 
         if avg > 0: avgs.append(avg)
         if co > 0:  checkouts.append(co)
 
         if l_p > l_m:
-            status  = "✅ Sieg"
-            punkte += 2
+            status = "✅ Sieg"; punkte += 2
         elif l_p < l_m:
             status = "❌ Niederlage"
         else:
-            status  = "🤝 Unentschieden"
-            punkte += 1
+            status = "🤝 Unentschieden"; punkte += 1
 
         rows.append({
             "Spieltag":   e["spieltag"],
             "Gegner":     gegner,
             "Legs":       f"{l_p}:{l_m}",
             "Status":     status,
-            "Average":    avg,
+            "Average":    round(avg, 2),
             "Checkout %": co,
             "26er":       z26,
-            "High-Check": "✅" if hc else ""
+            "High-Checks": ", ".join(str(x) for x in hc_liste) if hc_liste else ""
         })
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("🏆 Punkte",       punkte)
     c2.metric("✅ Siege",         sum(1 for r in rows if r["Status"] == "✅ Sieg"))
     c3.metric("📊 Legs +/-",     f"{legs_p}/{legs_m}")
     c4.metric("🎯 Ø Average",    round(sum(avgs)/len(avgs), 2)           if avgs      else 0)
     c5.metric("💯 Ø Checkout %", round(sum(checkouts)/len(checkouts), 2) if checkouts else 0)
-    c6.metric("🔢 26er gesamt",  gesamt_26)
+    c6.metric("🔢 26er",         gesamt_26)
+    c7.metric("🚀 Best HC",      max(alle_hc) if alle_hc else "–")
 
     if rows:
         st.subheader("Spielübersicht")
@@ -375,15 +450,42 @@ def zeige_statistiken(ergebnisse):
         st.info("Noch keine Spiele eingetragen.")
 
 # ─────────────────────────────────────────────
+# Info-Tab
+# ─────────────────────────────────────────────
+def zeige_info():
+    st.header("ℹ️ Infos & Regeln")
+
+    st.markdown("""
+    ### 🎯 Modus
+    - **Jeder gegen Jeden** – 8 Spieler, gespielt wird in Spieltagen (je 2 Wochen)
+    - **Format:** Best of 8 · 501 · Double Out
+    - **Punkte:** Sieg = 2 Pkt · Unentschieden = 1 Pkt · Niederlage = 0 Pkt
+
+    ### 💻 Plattform
+    - Gespielt wird auf **[lidarts.org](https://lidarts.org)** – bitte rechtzeitig registrieren!
+    - Begleitend empfehlen wir einen **WhatsApp Videocall** während des Spiels
+
+    ### 💰 Preisgeld (Gesamt: 40 €)
+    | Award | Preis |
+    |---|---|
+    | 🏆 Platz 1 – Gesamttabelle | 15 € |
+    | 🥈 Platz 2 | 8 € |
+    | 🥉 Platz 3 | 4 € |
+    | 👑 26er-Krone (meiste 26er) | 5 € |
+    | 🚀 High-Finish-Award (höchstes Finish >100) | 4 € |
+    | 📊 Best-Average-Award | 4 € |
+
+    ### 💳 TN-Gebühr
+    Einmalig **5 €** per PayPal an: `dwainschwarzer575@gmail.com`
+
+    ---
+    🔥 **GAME ON – Pfeile spitz, Bier kalt!** 🎯
+    """)
+
+# ─────────────────────────────────────────────
 # Haupt-App
 # ─────────────────────────────────────────────
 def main():
-    st.set_page_config(
-        page_title="Dart Turnier 2026",
-        page_icon="🎯",
-        layout="wide"
-    )
-
     if not check_passwort():
         st.stop()
 
@@ -400,24 +502,24 @@ def main():
     spielplan  = lade_spielplan()
     ergebnisse = lade_ergebnisse()
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🏆 Tabelle",
         "📅 Spielplan",
         "✏️ Ergebnis eintragen",
-        "📊 Statistiken"
+        "📊 Statistiken",
+        "ℹ️ Infos & Regeln"
     ])
 
     with tab1:
         zeige_tabelle(ergebnisse)
-
     with tab2:
         zeige_spielplan(spielplan, ergebnisse)
-
     with tab3:
         trage_ergebnis_ein(spielplan, ergebnisse)
-
     with tab4:
         zeige_statistiken(ergebnisse)
+    with tab5:
+        zeige_info()
 
 if __name__ == "__main__":
     main()
