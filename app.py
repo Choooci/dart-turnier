@@ -87,7 +87,6 @@ def zeige_tabelle(ergebnisse):
         stats[h]["26er"]   += e.get("er_26_heim", 0)
         stats[g]["26er"]   += e.get("er_26_gast", 0)
 
-        # High-Checks (Liste von Zahlen)
         for hc in (e.get("highcheck_heim") or []):
             if isinstance(hc, (int, float)) and hc > 0:
                 stats[h]["Highchecks"].append(hc)
@@ -117,16 +116,16 @@ def zeige_tabelle(ergebnisse):
         avg     = round(v["Avg_sum"] / v["Avg_n"], 2) if v["Avg_n"] > 0 else 0.0
         best_hc = max(v["Highchecks"]) if v["Highchecks"] else "-"
         rows.append({
-            "Spieler":       s,
-            "Spiele":        v["Spiele"],
-            "S":             v["Siege"],
-            "U":             v["Unentschieden"],
-            "N":             v["Niederlagen"],
-            "Legs +/-":      f"{v['Legs+']}:{v['Legs-']}",
-            "Punkte":        v["Punkte"],
-            "Ø Avg":         avg,
-            "26er":          v["26er"],
-            "Best HC":       best_hc,
+            "Spieler":  s,
+            "Spiele":   v["Spiele"],
+            "S":        v["Siege"],
+            "U":        v["Unentschieden"],
+            "N":        v["Niederlagen"],
+            "Legs +/-": f"{v['Legs+']}:{v['Legs-']}",
+            "Punkte":   v["Punkte"],
+            "Ø Avg":    avg,
+            "26er":     v["26er"],
+            "Best HC":  best_hc,
         })
 
     df = pd.DataFrame(rows).sort_values(
@@ -148,21 +147,18 @@ def zeige_tabelle(ergebnisse):
         use_container_width=True
     )
 
-    # ── Preise & Awards ──────────────────────────────────
     st.markdown("---")
     st.subheader("🏅 Preise & Awards")
 
-    # Werte berechnen
     sorted_rows = sorted(rows, key=lambda x: (x["Punkte"], x["S"], x["Ø Avg"]), reverse=True)
 
     platz1 = sorted_rows[0]["Spieler"] if len(sorted_rows) > 0 else "–"
     platz2 = sorted_rows[1]["Spieler"] if len(sorted_rows) > 1 else "–"
     platz3 = sorted_rows[2]["Spieler"] if len(sorted_rows) > 2 else "–"
 
-    krone_26  = max(rows, key=lambda x: x["26er"])
-    best_avg  = max(rows, key=lambda x: x["Ø Avg"])
+    krone_26 = max(rows, key=lambda x: x["26er"])
+    best_avg = max(rows, key=lambda x: x["Ø Avg"])
 
-    # Bestes High-Check über alle
     best_hc_val  = 0
     best_hc_name = "–"
     for e in ergebnisse:
@@ -194,7 +190,6 @@ def zeige_tabelle(ergebnisse):
 from datetime import datetime
 
 def format_datum(datum_str):
-    # Datum von ISO-Format in lesbares deutsches Format umwandeln
     dt = datetime.strptime(datum_str, "%Y-%m-%d")
     return dt.strftime("%-d. %B %Y").replace("January","Januar").replace("February","Februar")\
         .replace("March","März").replace("April","April").replace("May","Mai")\
@@ -254,18 +249,21 @@ def zeige_spielplan(spielplan, ergebnisse):
                     )
                 st.markdown("---")
 
-
-
 # ─────────────────────────────────────────────
 # Ergebnis eintragen
 # ─────────────────────────────────────────────
-
 def trage_ergebnis_ein(spielplan, ergebnisse):
     st.header("✏️ Ergebnis eintragen")
 
     if not spielplan:
         st.warning("Kein Spielplan gefunden.")
         return
+
+    # form_version initialisieren – das ist der Reset-Trick
+    if "form_version" not in st.session_state:
+        st.session_state["form_version"] = 0
+    if "letztes_spiel" not in st.session_state:
+        st.session_state["letztes_spiel"] = None
 
     spieltage = sorted(set(s["spieltag"] for s in spielplan))
     spieltag  = st.selectbox(
@@ -290,71 +288,77 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
         st.rerun()
         return
 
-    spiel = spiele_heute[idx]
-    key   = (spiel["spieltag"], spiel["heim"], spiel["gast"])
+    spiel    = spiele_heute[idx]
+    spiel_id = (spiel["spieltag"], spiel["heim"], spiel["gast"])
 
-    # Prüfen ob sich das Spiel geändert hat → Felder zurücksetzen
-    letztes_spiel = st.session_state.get("letztes_spiel")
-    if letztes_spiel != key:
-        st.session_state["letztes_spiel"] = key
-        # Formularfelder zurücksetzen
-        for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg"]:
-            if k in st.session_state:
-                del st.session_state[k]
+    # Spielwechsel erkannt → form_version hochzählen → alle Widgets neu erzeugen
+    if st.session_state["letztes_spiel"] != spiel_id:
+        st.session_state["letztes_spiel"] = spiel_id
+        st.session_state["form_version"] += 1
 
+    v = st.session_state["form_version"]  # Kurzform für Key-Suffix
+
+    # Vorhandenes Ergebnis suchen
     vorhandene = None
     for e in ergebnisse:
-        if (e["spieltag"], e["heim"], e["gast"]) == key:
+        if (e["spieltag"], e["heim"], e["gast"]) == spiel_id:
             vorhandene = e
             break
 
     if vorhandene:
         st.info("ℹ️ Dieses Spiel wurde bereits eingetragen. Du kannst es überschreiben.")
 
-    # Standardwerte: vorhandene Daten ODER leer (0 / 0.0 / "")
-    def iv(field, fallback):
-        """Wert aus session_state, sonst aus vorhandene, sonst fallback"""
-        if field in st.session_state:
-            return st.session_state[field]
+    st.markdown(f"### {spiel['heim']} vs {spiel['gast']}")
+
+    # Standardwerte: vorhandene Daten ODER 0 / leer
+    def val(field, fallback):
         if vorhandene:
             return vorhandene.get(field, fallback)
         return fallback
 
-    st.markdown(f"### {spiel['heim']} vs {spiel['gast']}")
-
-    with st.form("ergebnis_form"):
+    with st.form(f"ergebnis_form_{v}"):
         col1, col2 = st.columns(2)
 
         with col1:
             st.markdown(f"**{spiel['heim']}**")
             legs_heim     = st.number_input("Legs", min_value=0, max_value=10,
-                                            value=iv("legs_heim", 0), key="lh")
+                                            value=val("legs_heim", 0),
+                                            key=f"lh_{v}")
             avg_heim      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=float(iv("avg_heim", 0.0)), key="ah")
+                                            value=float(val("avg_heim", 0.0)),
+                                            key=f"ah_{v}")
             checkout_heim = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=float(iv("checkout_heim", 0.0)), key="ch")
+                                            value=float(val("checkout_heim", 0.0)),
+                                            key=f"ch_{v}")
             er_26_heim    = st.number_input("26er", min_value=0,
-                                            value=iv("er_26_heim", 0), key="z6h")
+                                            value=val("er_26_heim", 0),
+                                            key=f"z6h_{v}")
             hc_heim_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_heim") or [])) if vorhandene else ""
             hc_heim_str     = st.text_input(
                 "High-Checks (>100), kommagetrennt z.B. 102, 115",
-                value=hc_heim_default, key="hch"
+                value=hc_heim_default,
+                key=f"hch_{v}"
             )
 
         with col2:
             st.markdown(f"**{spiel['gast']}**")
             legs_gast     = st.number_input("Legs", min_value=0, max_value=10,
-                                            value=iv("legs_gast", 0), key="lg")
+                                            value=val("legs_gast", 0),
+                                            key=f"lg_{v}")
             avg_gast      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=float(iv("avg_gast", 0.0)), key="ag")
+                                            value=float(val("avg_gast", 0.0)),
+                                            key=f"ag_{v}")
             checkout_gast = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=float(iv("checkout_gast", 0.0)), key="cg")
+                                            value=float(val("checkout_gast", 0.0)),
+                                            key=f"cg_{v}")
             er_26_gast    = st.number_input("26er", min_value=0,
-                                            value=iv("er_26_gast", 0), key="z6g")
+                                            value=val("er_26_gast", 0),
+                                            key=f"z6g_{v}")
             hc_gast_default = ", ".join(str(x) for x in (vorhandene.get("highcheck_gast") or [])) if vorhandene else ""
             hc_gast_str     = st.text_input(
                 "High-Checks (>100), kommagetrennt z.B. 102, 115",
-                value=hc_gast_default, key="hcg"
+                value=hc_gast_default,
+                key=f"hcg_{v}"
             )
 
         submit = st.form_submit_button("💾 Speichern", use_container_width=True)
@@ -392,15 +396,12 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
                 supabase.table("ergebnisse").insert(daten).execute()
                 st.success("✅ Ergebnis gespeichert!")
 
-            # Felder + Spiel-Tracker zurücksetzen
-            for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg", "letztes_spiel"]:
-                if k in st.session_state:
-                    del st.session_state[k]
-
+            # Nach Speichern: Version hochzählen → Formular wird geleert
+            st.session_state["form_version"] += 1
+            st.session_state["letztes_spiel"] = None
             st.rerun()
         except Exception as ex:
             st.error(f"❌ Fehler beim Speichern: {ex}")
-
 
 # ─────────────────────────────────────────────
 # Statistiken
@@ -428,11 +429,11 @@ def zeige_statistiken(ergebnisse):
         else:
             continue
 
-        l_p  = e["legs_heim"] if ist_heim else e["legs_gast"]
-        l_m  = e["legs_gast"] if ist_heim else e["legs_heim"]
-        avg  = e["avg_heim"]  if ist_heim else e["avg_gast"]
-        co   = e["checkout_heim"] if ist_heim else e["checkout_gast"]
-        z26  = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
+        l_p      = e["legs_heim"] if ist_heim else e["legs_gast"]
+        l_m      = e["legs_gast"] if ist_heim else e["legs_heim"]
+        avg      = e["avg_heim"]  if ist_heim else e["avg_gast"]
+        co       = e["checkout_heim"] if ist_heim else e["checkout_gast"]
+        z26      = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
         hc_liste = (e.get("highcheck_heim") or []) if ist_heim else (e.get("highcheck_gast") or [])
         gegner   = e["gast"] if ist_heim else e["heim"]
 
@@ -452,13 +453,13 @@ def zeige_statistiken(ergebnisse):
             status = "🤝 Unentschieden"; punkte += 1
 
         rows.append({
-            "Spieltag":   e["spieltag"],
-            "Gegner":     gegner,
-            "Legs":       f"{l_p}:{l_m}",
-            "Status":     status,
-            "Average":    round(avg, 2),
-            "Checkout %": co,
-            "26er":       z26,
+            "Spieltag":    e["spieltag"],
+            "Gegner":      gegner,
+            "Legs":        f"{l_p}:{l_m}",
+            "Status":      status,
+            "Average":     round(avg, 2),
+            "Checkout %":  co,
+            "26er":        z26,
             "High-Checks": ", ".join(str(x) for x in hc_liste) if hc_liste else ""
         })
 
