@@ -374,9 +374,16 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
             else:
                 supabase.table("ergebnisse").insert(daten).execute()
                 st.success("✅ Ergebnis gespeichert!")
+
+            # Cache der Formularfelder leeren
+            for k in ["lh", "ah", "ch", "z6h", "hch", "lg", "ag", "cg", "z6g", "hcg"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+
             st.rerun()
         except Exception as ex:
             st.error(f"❌ Fehler beim Speichern: {ex}")
+
 
 # ─────────────────────────────────────────────
 # Statistiken
