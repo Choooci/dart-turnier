@@ -62,7 +62,7 @@ def zeige_tabelle(ergebnisse):
 
     spieler = ["Claas", "Pätte", "Jakob", "Felix", "Jonas", "Chrissi", "Flo", "Dwain"]
     stats = {s: {"Punkte": 0, "Siege": 0, "Niederlagen": 0, "Unentschieden": 0,
-                 "Legs+": 0, "Legs-": 0, "Spiele": 0, "Avg_sum": 0.0, "Avg_n": 0} 
+                 "Legs+": 0, "Legs-": 0, "Spiele": 0, "Avg_sum": 0.0, "Avg_n": 0}
              for s in spieler}
 
     for e in ergebnisse:
@@ -78,7 +78,6 @@ def zeige_tabelle(ergebnisse):
         stats[g]["Legs+"] += lg
         stats[g]["Legs-"] += lh
 
-        # Average
         if e["avg_heim"] > 0:
             stats[h]["Avg_sum"] += e["avg_heim"]
             stats[h]["Avg_n"]   += 1
@@ -86,7 +85,6 @@ def zeige_tabelle(ergebnisse):
             stats[g]["Avg_sum"] += e["avg_gast"]
             stats[g]["Avg_n"]   += 1
 
-        # Punkte
         if lh > lg:
             stats[h]["Punkte"] += 2
             stats[h]["Siege"]  += 1
@@ -105,14 +103,14 @@ def zeige_tabelle(ergebnisse):
     for s, v in stats.items():
         avg = round(v["Avg_sum"] / v["Avg_n"], 2) if v["Avg_n"] > 0 else 0
         rows.append({
-            "Spieler":        s,
-            "Spiele":         v["Spiele"],
-            "S":              v["Siege"],
-            "U":              v["Unentschieden"],
-            "N":              v["Niederlagen"],
-            "Legs +/-":       f"{v['Legs+']}:{v['Legs-']}",
-            "Punkte":         v["Punkte"],
-            "Ø Average":      avg
+            "Spieler":   s,
+            "Spiele":    v["Spiele"],
+            "S":         v["Siege"],
+            "U":         v["Unentschieden"],
+            "N":         v["Niederlagen"],
+            "Legs +/-":  f"{v['Legs+']}:{v['Legs-']}",
+            "Punkte":    v["Punkte"],
+            "Ø Average": avg
         })
 
     df = pd.DataFrame(rows).sort_values(
@@ -140,7 +138,6 @@ def zeige_tabelle(ergebnisse):
 def zeige_spielplan(spielplan, ergebnisse):
     st.header("📅 Spielplan")
 
-    # Ergebnisse als schnelle Lookup-Map
     erg_map = {}
     for e in ergebnisse:
         key = (e["spieltag"], e["heim"], e["gast"])
@@ -190,21 +187,42 @@ def zeige_spielplan(spielplan, ergebnisse):
 def trage_ergebnis_ein(spielplan, ergebnisse):
     st.header("✏️ Ergebnis eintragen")
 
-    # Bereits eingetragene Spiele
-    erg_keys = {(e["spieltag"], e["heim"], e["gast"]) for e in ergebnisse}
+    if not spielplan:
+        st.warning("Kein Spielplan gefunden.")
+        return
 
     spieltage = sorted(set(s["spieltag"] for s in spielplan))
-    spieltag  = st.selectbox("Spieltag wählen", spieltage, format_func=lambda x: f"Spieltag {x}")
+    spieltag  = st.selectbox(
+        "Spieltag wählen",
+        spieltage,
+        format_func=lambda x: f"Spieltag {x}",
+        key="spieltag_auswahl"
+    )
 
     spiele_heute = [s for s in spielplan if s["spieltag"] == spieltag]
     optionen     = [f"{s['heim']} vs {s['gast']}" for s in spiele_heute]
-    auswahl      = st.selectbox("Spiel wählen", optionen)
 
-    idx   = optionen.index(auswahl)
+    if not optionen:
+        st.warning("Keine Spiele für diesen Spieltag gefunden.")
+        return
+
+    auswahl = st.selectbox(
+        "Spiel wählen",
+        optionen,
+        key=f"spiel_auswahl_{spieltag}"
+    )
+
+    # Sicherheitsnetz – fängt den Fehler ab statt zu crashen
+    try:
+        idx = optionen.index(auswahl)
+    except ValueError:
+        st.warning("Bitte Spieltag neu auswählen.")
+        st.rerun()
+        return
+
     spiel = spiele_heute[idx]
     key   = (spiel["spieltag"], spiel["heim"], spiel["gast"])
 
-    # Vorhandene Daten laden
     vorhandene = None
     for e in ergebnisse:
         if (e["spieltag"], e["heim"], e["gast"]) == key:
@@ -221,45 +239,45 @@ def trage_ergebnis_ein(spielplan, ergebnisse):
 
         with col1:
             st.markdown(f"**{spiel['heim']}**")
-            legs_heim     = st.number_input("Legs", min_value=0, max_value=10, 
+            legs_heim     = st.number_input("Legs", min_value=0, max_value=10,
                                             value=vorhandene["legs_heim"] if vorhandene else 0, key="lh")
             avg_heim      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=vorhandene["avg_heim"] if vorhandene else 0.0, key="ah")
+                                            value=float(vorhandene["avg_heim"]) if vorhandene else 0.0, key="ah")
             checkout_heim = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=vorhandene["checkout_heim"] if vorhandene else 0.0, key="ch")
+                                            value=float(vorhandene["checkout_heim"]) if vorhandene else 0.0, key="ch")
             er_26_heim    = st.number_input("26er", min_value=0,
                                             value=vorhandene["er_26_heim"] if vorhandene else 0, key="z6h")
-            hc_heim       = st.checkbox("High-Check (>100)", 
-                                        value=vorhandene["highcheck_heim"] if vorhandene else False, key="hch")
+            hc_heim       = st.checkbox("High-Check (>100)",
+                                        value=bool(vorhandene["highcheck_heim"]) if vorhandene else False, key="hch")
 
         with col2:
             st.markdown(f"**{spiel['gast']}**")
             legs_gast     = st.number_input("Legs", min_value=0, max_value=10,
                                             value=vorhandene["legs_gast"] if vorhandene else 0, key="lg")
             avg_gast      = st.number_input("Average", min_value=0.0, max_value=200.0, step=0.01,
-                                            value=vorhandene["avg_gast"] if vorhandene else 0.0, key="ag")
+                                            value=float(vorhandene["avg_gast"]) if vorhandene else 0.0, key="ag")
             checkout_gast = st.number_input("Checkout %", min_value=0.0, max_value=100.0, step=0.01,
-                                            value=vorhandene["checkout_gast"] if vorhandene else 0.0, key="cg")
+                                            value=float(vorhandene["checkout_gast"]) if vorhandene else 0.0, key="cg")
             er_26_gast    = st.number_input("26er", min_value=0,
                                             value=vorhandene["er_26_gast"] if vorhandene else 0, key="z6g")
             hc_gast       = st.checkbox("High-Check (>100)",
-                                        value=vorhandene["highcheck_gast"] if vorhandene else False, key="hcg")
+                                        value=bool(vorhandene["highcheck_gast"]) if vorhandene else False, key="hcg")
 
         submit = st.form_submit_button("💾 Speichern", use_container_width=True)
 
     if submit:
         daten = {
-            "spieltag":      spiel["spieltag"],
-            "heim":          spiel["heim"],
-            "gast":          spiel["gast"],
-            "legs_heim":     legs_heim,
-            "legs_gast":     legs_gast,
-            "avg_heim":      avg_heim,
-            "avg_gast":      avg_gast,
-            "checkout_heim": checkout_heim,
-            "checkout_gast": checkout_gast,
-            "er_26_heim":    er_26_heim,
-            "er_26_gast":    er_26_gast,
+            "spieltag":       spiel["spieltag"],
+            "heim":           spiel["heim"],
+            "gast":           spiel["gast"],
+            "legs_heim":      int(legs_heim),
+            "legs_gast":      int(legs_gast),
+            "avg_heim":       float(avg_heim),
+            "avg_gast":       float(avg_gast),
+            "checkout_heim":  float(checkout_heim),
+            "checkout_gast":  float(checkout_gast),
+            "er_26_heim":     int(er_26_heim),
+            "er_26_gast":     int(er_26_gast),
             "highcheck_heim": hc_heim,
             "highcheck_gast": hc_gast
         }
@@ -298,50 +316,48 @@ def zeige_statistiken(ergebnisse):
         else:
             continue
 
-        l_p   = e["legs_heim"] if ist_heim else e["legs_gast"]
-        l_m   = e["legs_gast"] if ist_heim else e["legs_heim"]
-        avg   = e["avg_heim"]  if ist_heim else e["avg_gast"]
-        co    = e["checkout_heim"] if ist_heim else e["checkout_gast"]
-        z26   = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
-        hc    = e["highcheck_heim"] if ist_heim else e["highcheck_gast"]
+        l_p    = e["legs_heim"] if ist_heim else e["legs_gast"]
+        l_m    = e["legs_gast"] if ist_heim else e["legs_heim"]
+        avg    = e["avg_heim"]  if ist_heim else e["avg_gast"]
+        co     = e["checkout_heim"] if ist_heim else e["checkout_gast"]
+        z26    = e["er_26_heim"]    if ist_heim else e["er_26_gast"]
+        hc     = e["highcheck_heim"] if ist_heim else e["highcheck_gast"]
         gegner = e["gast"] if ist_heim else e["heim"]
 
         legs_p    += l_p
         legs_m    += l_m
         gesamt_26 += z26
 
-        if avg > 0:      avgs.append(avg)
-        if co > 0:       checkouts.append(co)
+        if avg > 0: avgs.append(avg)
+        if co > 0:  checkouts.append(co)
 
         if l_p > l_m:
-            status = "✅ Sieg"
+            status  = "✅ Sieg"
             punkte += 2
         elif l_p < l_m:
             status = "❌ Niederlage"
         else:
-            status = "🤝 Unentschieden"
+            status  = "🤝 Unentschieden"
             punkte += 1
 
         rows.append({
-            "Spieltag": e["spieltag"],
-            "Gegner":   gegner,
-            "Legs":     f"{l_p}:{l_m}",
-            "Punkte":   punkte,
-            "Status":   status,
-            "Average":  avg,
+            "Spieltag":   e["spieltag"],
+            "Gegner":     gegner,
+            "Legs":       f"{l_p}:{l_m}",
+            "Status":     status,
+            "Average":    avg,
             "Checkout %": co,
-            "26er":     z26,
+            "26er":       z26,
             "High-Check": "✅" if hc else ""
         })
 
-    # KPI-Kacheln
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("🏆 Punkte",        punkte)
-    c2.metric("✅ Siege",          sum(1 for r in rows if r["Status"] == "✅ Sieg"))
-    c3.metric("📊 Legs +/-",      f"{legs_p}/{legs_m}")
-    c4.metric("🎯 Ø Average",     round(sum(avgs)/len(avgs), 2)           if avgs       else 0)
-    c5.metric("💯 Ø Checkout %",  round(sum(checkouts)/len(checkouts), 2) if checkouts  else 0)
-    c6.metric("🔢 26er gesamt",   gesamt_26)
+    c1.metric("🏆 Punkte",       punkte)
+    c2.metric("✅ Siege",         sum(1 for r in rows if r["Status"] == "✅ Sieg"))
+    c3.metric("📊 Legs +/-",     f"{legs_p}/{legs_m}")
+    c4.metric("🎯 Ø Average",    round(sum(avgs)/len(avgs), 2)           if avgs      else 0)
+    c5.metric("💯 Ø Checkout %", round(sum(checkouts)/len(checkouts), 2) if checkouts else 0)
+    c6.metric("🔢 26er gesamt",  gesamt_26)
 
     if rows:
         st.subheader("Spielübersicht")
@@ -371,7 +387,6 @@ def main():
     if not check_passwort():
         st.stop()
 
-    # Header mit Logout
     col1, col2 = st.columns([9, 1])
     with col1:
         st.title("🎯 Dart Turnier 2026")
