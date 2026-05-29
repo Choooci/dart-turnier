@@ -191,6 +191,17 @@ def zeige_tabelle(ergebnisse):
 # ─────────────────────────────────────────────
 # Spielplan anzeigen
 # ─────────────────────────────────────────────
+from datetime import datetime
+
+def format_datum(datum_str):
+    # Datum von ISO-Format in lesbares deutsches Format umwandeln
+    dt = datetime.strptime(datum_str, "%Y-%m-%d")
+    return dt.strftime("%-d. %B %Y").replace("January","Januar").replace("February","Februar")\
+        .replace("March","März").replace("April","April").replace("May","Mai")\
+        .replace("June","Juni").replace("July","Juli").replace("August","August")\
+        .replace("September","September").replace("October","Oktober")\
+        .replace("November","November").replace("December","Dezember")
+
 def zeige_spielplan(spielplan, ergebnisse):
     st.header("📅 Spielplan")
 
@@ -203,8 +214,8 @@ def zeige_spielplan(spielplan, ergebnisse):
 
     for st_nr in spieltage:
         spiele = [s for s in spielplan if s["spieltag"] == st_nr]
-        start  = spiele[0]["start_datum"]
-        ende   = spiele[0]["end_datum"]
+        start  = format_datum(spiele[0]["start_datum"])
+        ende   = format_datum(spiele[0]["end_datum"])
 
         with st.expander(f"📅 Spieltag {st_nr} | {start} – {ende}", expanded=(st_nr == 1)):
             for spiel in spiele:
@@ -242,6 +253,8 @@ def zeige_spielplan(spielplan, ergebnisse):
                         f"{hc_str}"
                     )
                 st.markdown("---")
+
+
 
 # ─────────────────────────────────────────────
 # Ergebnis eintragen
